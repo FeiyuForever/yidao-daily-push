@@ -1,0 +1,31 @@
+name: daily-email
+
+on:
+  schedule:
+    # GitHub Actions 用 UTC 时间。00:30 UTC = 北京时间 08:30
+    # 注意：GitHub 定时任务偶尔有几分钟延迟，属正常现象
+    - cron: "30 0 * * *"
+  # 支持在 Actions 页面手动点击运行，用于测试
+  workflow_dispatch:
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Send daily email
+        env:
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          TO_EMAIL: ${{ secrets.TO_EMAIL }}
+        run: python send_daily.py
+
+      - name: Result
+        run: echo "done at $(date)"
