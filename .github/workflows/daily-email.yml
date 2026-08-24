@@ -7,6 +7,11 @@ on:
     - cron: "30 0 * * *"
   # 支持在 Actions 页面手动点击运行，用于测试
   workflow_dispatch:
+    inputs:
+      force_issue:
+        description: "手动指定期号发送（如 1 = 第001期；留空则按当天日期，课前/课后不发）"
+        required: false
+        default: ""
 
 jobs:
   send:
@@ -25,6 +30,7 @@ jobs:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           TO_EMAIL: ${{ secrets.TO_EMAIL }}
+          FORCE_ISSUE: ${{ github.event.inputs.force_issue }}
         run: python send_daily.py
 
       - name: Result
