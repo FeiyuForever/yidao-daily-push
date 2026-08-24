@@ -81,8 +81,9 @@ def build_html(it: dict) -> str:
         img_block = (
             '<div style="background:#fff8e1;border-left:4px solid #f0a500;'
             'padding:10px 14px;border-radius:4px;font-size:14px;color:#7a5b00;'
-            'margin:16px 0 8px;">💡 长图见下方（<b>右键图片 → 图片另存为</b>）。'
-            '同时作为邮件附件发送，可直接在附件栏下载 <b>第{n:03d}期.png</b>，转发微信群最方便。</div>\n'
+            'margin:16px 0 8px;">💡 <b>核心：长图已包含全部排版内容</b>（顶栏+正文+讨论题+资料来源），'
+            '<b>直接保存图片发到微信群</b>即可，无需复制文字。<br>'
+            '📎 附件栏还有独立 <b>第{n:03d}期.png</b> 可下载；📋 邮件下方"切换纯文本"可复制不带格式的纯文字版。</div>\n'
             '<img src="cid:dailycard" style="max-width:640px;width:100%;'
             'display:block;margin:0 auto 8px;border-radius:6px;'
             'box-shadow:0 2px 8px rgba(0,0,0,0.08);">'
@@ -122,6 +123,39 @@ def build_html(it: dict) -> str:
 </body></html>"""
 
 
+def build_plain_text(it: dict) -> str:
+    """生成不带任何 HTML 标记的纯文本版（便于复制粘贴到微信等不支持富文本的地方）"""
+    n = it["issue"]
+    lines = [
+        f"医道同修·总第{n:03d}期·第{week_no(n)}周·{it['column']}·难度：{it['difficulty']}",
+        it["title"],
+        "",
+    ]
+    for sec in it["sections"]:
+        lines.append(sec["h"])
+        lines.append(sec["p"])
+        lines.append("")
+
+    lines.append("💬 今日讨论")
+    lines.append(it["discussion"])
+    lines.append("")
+
+    has_image = os.path.exists(os.path.join(BASE_DIR, "data", it["image"]))
+    if has_image:
+        lines.append("——————")
+        lines.append(f"💡 长图（含全部排版）已嵌入邮件正文，并作为附件发送。")
+        lines.append(f"   直接保存图片发到微信群即可，无需复制此文字版。")
+        lines.append("")
+
+    lines.append(f"📚 资料来源：{it['source_text']}")
+    if it.get("source_url"):
+        lines.append(f"   {it['source_url']}")
+    lines.append(it.get("disclaimer") or "本内容仅供学习交流，不能替代医生诊疗。")
+    lines.append("")
+    lines.append(f"—— 医道同修 · 总第{n:03d}期 · 内容可直接复制转发到微信群 ——")
+    return "\n".join(lines)
+
+
 def send(it: dict):
     user = os.environ.get("SMTP_USER", "houkep@163.com")
     password = os.environ["SMTP_PASSWORD"]
@@ -139,7 +173,7 @@ def send(it: dict):
     msg["To"] = to_email
     msg["Date"] = datetime.now().strftime("%a, %d %b %Y %H:%M:%S +0800")
 
-    # 内层 related：让 HTML 正文里的 <img src="cid:dailycard"> 能找到图片
+    # 内层 related：HTML 正文 + 内嵌图片（让 <img src="cid:dailycard"> 能找到图）
     related = MIMEMultipart("related")
     related.attach(MIMEText(build_html(it), "html", "utf-8"))
 
@@ -154,13 +188,18 @@ def send(it: dict):
                               filename=("utf-8", "", f"第{n:03d}期.png"))
         related.attach(inline_img)
 
-        # 2) 可下载附件（用户可直接保存/转发）
+    # 再外层 alternative：让客户端/网页可选 text/plain 或 text/html
+    alt = MIMEMultipart("alternative")
+    alt.attach(MIMEText(build_plain_text(it), "plain", "utf-8"))
+    alt.attach(related)
+    msg.attach(alt)
+
+    # 2) 可下载附件（用户可直接保存/转发）
+    if os.path.exists(img_path):
         att_img = MIMEImage(img_data)
         att_img.add_header("Content-Disposition", "attachment",
                            filename=("utf-8", "", f"第{n:03d}期.png"))
         msg.attach(att_img)
-
-    msg.attach(related)
 
     with smtplib.SMTP_SSL(host, port) as server:
         server.login(user, password)
