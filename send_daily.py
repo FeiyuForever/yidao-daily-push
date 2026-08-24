@@ -81,11 +81,12 @@ def build_html(it: dict) -> str:
         img_block = (
             '<div style="background:#fff8e1;border-left:4px solid #f0a500;'
             'padding:10px 14px;border-radius:4px;font-size:14px;color:#7a5b00;'
-            'margin:16px 0 8px;">💡 长图已嵌入下方，长按或保存图片即可直接发到微信群。</div>\n'
+            'margin:16px 0 8px;">💡 长图见下方（<b>右键图片 → 图片另存为</b>）。'
+            '同时作为邮件附件发送，可直接在附件栏下载 <b>第{n:03d}期.png</b>，转发微信群最方便。</div>\n'
             '<img src="cid:dailycard" style="max-width:640px;width:100%;'
             'display:block;margin:0 auto 8px;border-radius:6px;'
             'box-shadow:0 2px 8px rgba(0,0,0,0.08);">'
-        )
+        ).format(n=it["issue"])
     else:
         img_block = (
             '<p style="font-size:13px;color:#999;">⚠️ 今日长图缺失，仅发送文字版。</p>'
@@ -129,7 +130,8 @@ def send(it: dict):
     to_email = os.environ.get("TO_EMAIL", user)
 
     n = it["issue"]
-    msg = MIMEMultipart("related")
+    # 外层 mixed：同时承载正文和附件
+    msg = MIMEMultipart("mixed")
     msg["Subject"] = Header(
         f"医道同修·总第{n:03d}期 {it['column']}：{it['title']}", "utf-8"
     )
@@ -137,16 +139,28 @@ def send(it: dict):
     msg["To"] = to_email
     msg["Date"] = datetime.now().strftime("%a, %d %b %Y %H:%M:%S +0800")
 
-    msg.attach(MIMEText(build_html(it), "html", "utf-8"))
+    # 内层 related：让 HTML 正文里的 <img src="cid:dailycard"> 能找到图片
+    related = MIMEMultipart("related")
+    related.attach(MIMEText(build_html(it), "html", "utf-8"))
 
     img_path = os.path.join(BASE_DIR, "data", it["image"])
     if os.path.exists(img_path):
         with open(img_path, "rb") as f:
-            img = MIMEImage(f.read())
-        img.add_header("Content-ID", "<dailycard>")
-        img.add_header("Content-Disposition", "inline",
-                       filename=("GBK", "", f"第{n:03d}期.png"))
-        msg.attach(img)
+            img_data = f.read()
+        # 1) 正文内嵌图片（CID 方式，正文里直接显示）
+        inline_img = MIMEImage(img_data)
+        inline_img.add_header("Content-ID", "<dailycard>")
+        inline_img.add_header("Content-Disposition", "inline",
+                              filename=("utf-8", "", f"第{n:03d}期.png"))
+        related.attach(inline_img)
+
+        # 2) 可下载附件（用户可直接保存/转发）
+        att_img = MIMEImage(img_data)
+        att_img.add_header("Content-Disposition", "attachment",
+                           filename=("utf-8", "", f"第{n:03d}期.png"))
+        msg.attach(att_img)
+
+    msg.attach(related)
 
     with smtplib.SMTP_SSL(host, port) as server:
         server.login(user, password)
