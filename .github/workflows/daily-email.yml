@@ -3,8 +3,10 @@ name: daily-email
 on:
   schedule:
     # GitHub Actions 用 UTC 时间。00:30 UTC = 北京时间 08:30
-    # 注意：GitHub 定时任务偶尔有几分钟延迟，属正常现象
+    # 双触发兜底：8:30 主发，8:50 补发；脚本幂等（sent_log.json），同一天不会重发
+    # 注意：GitHub 定时任务在高负载时可能延迟很久甚至整点被跳过，双 cron 可显著降低漏发概率
     - cron: "30 0 * * *"
+    - cron: "50 0 * * *"
   # 支持在 Actions 页面手动点击运行，用于测试
   workflow_dispatch:
     inputs:
@@ -16,6 +18,8 @@ on:
 jobs:
   send:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # 允许 workflow 把 sent_log.json 推送回仓库
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,6 +36,15 @@ jobs:
           TO_EMAIL: ${{ secrets.TO_EMAIL }}
           FORCE_ISSUE: ${{ github.event.inputs.force_issue }}
         run: python send_daily.py
+
+      - name: Commit send log
+        if: github.event_name == 'schedule'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/sent_log.json
+          git diff --cached --quiet || git commit -m "send log: $(date -u +%F)"
+          git push
 
       - name: Result
         run: echo "done at $(date)"

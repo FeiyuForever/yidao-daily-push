@@ -208,14 +208,39 @@ def send(it: dict):
     print(f"✅ 已发送：总第{n:03d}期（{it['date']}）{it['column']}：{it['title']} -> {to_email}")
 
 
+SENT_LOG = os.path.join(BASE_DIR, "data", "sent_log.json")
+
+
+def already_sent_today(today: date) -> bool:
+    try:
+        with open(SENT_LOG) as f:
+            return json.load(f).get("last_sent_date") == today.isoformat()
+    except Exception:
+        return False
+
+
+def mark_sent(today: date):
+    with open(SENT_LOG, "w") as f:
+        json.dump({"last_sent_date": today.isoformat()}, f)
+
+
 def main():
-    issue, _ = load_issue()
+    issue, forced = load_issue()
     if not issue:
+        return
+    today = date.today()
+    # 幂等保护：双 cron 兜底时，第二个触发点发现今天已发就直接跳过
+    # 手动测试（FORCE_ISSUE）不受此限制
+    if not forced and already_sent_today(today):
+        print(f"今日（{today}）邮件已发送过，跳过（防止双 cron 重发）")
         return
     if not os.environ.get("SMTP_PASSWORD"):
         print("❌ 缺少环境变量 SMTP_PASSWORD（邮箱 SMTP 授权码）")
         sys.exit(1)
     send(issue)
+    if not forced:
+        mark_sent(today)
+        print(f"已记录发送日志：{today}")
 
 
 if __name__ == "__main__":
