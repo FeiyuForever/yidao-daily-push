@@ -2,11 +2,20 @@ name: daily-email
 
 on:
   schedule:
-    # GitHub Actions 用 UTC 时间。00:30 UTC = 北京时间 08:30
-    # 双触发兜底：8:30 主发，8:50 补发；脚本幂等（sent_log.json），同一天不会重发
-    # 注意：GitHub 定时任务在高负载时可能延迟很久甚至整点被跳过，双 cron 可显著降低漏发概率
-    - cron: "30 0 * * *"
-    - cron: "50 0 * * *"
+    # GitHub Actions cron 是 best-effort，高负载时会跳过。用10个cron覆盖08:30-09:30，sent_log防重发
+    - cron: "30 0 * * *"   # 08:30
+    - cron: "35 0 * * *"   # 08:35
+    - cron: "40 0 * * *"   # 08:40
+    - cron: "45 0 * * *"   # 08:45
+    - cron: "50 0 * * *"   # 08:50
+    - cron: "55 0 * * *"   # 08:55
+    - cron: "0 1 * * *"    # 09:00
+    - cron: "10 1 * * *"   # 09:10
+    - cron: "20 1 * * *"   # 09:20
+    - cron: "30 1 * * *"   # 09:30
+  # 外部cron服务（cron-job.org等）通过此事件触发
+  repository_dispatch:
+    types: [send-daily]
   # 支持在 Actions 页面手动点击运行，用于测试
   workflow_dispatch:
     inputs:
