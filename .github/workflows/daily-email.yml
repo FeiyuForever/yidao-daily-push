@@ -38,7 +38,6 @@ jobs:
         run: python send_daily.py
 
       - name: Commit send log
-        if: github.event_name == 'schedule'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
